@@ -1,0 +1,2253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Point Cloud Studio — Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-color: rgba(3, 18, 24, 0.78);
+      --text-color: #d8f6ff;
+      --accent-color: #00e5ff;
+      --accent-dim: rgba(0, 229, 255, 0.35);
+      --accent-faint: rgba(0, 229, 255, 0.12);
+      --warn-color: #ffb347;
+      --font-display: 'Orbitron', sans-serif;
+      --font-ui: 'Rajdhani', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #020608;
+      font-family: var(--font-ui);
+      color: var(--text-color);
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    /* ---- HUD atmosphere: faint grid + vignette + CRT scanlines ---- */
+    #bg-fx {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background-image:
+        linear-gradient(var(--accent-faint) 1px, transparent 1px),
+        linear-gradient(90deg, var(--accent-faint) 1px, transparent 1px);
+      background-size: 90px 90px;
+      opacity: 0.25;
+      mask-image: radial-gradient(ellipse at center, transparent 30%, black 100%);
+      -webkit-mask-image: radial-gradient(ellipse at center, transparent 30%, black 100%);
+    }
+
+    #scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.12) 0px,
+        rgba(0, 0, 0, 0.12) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.4;
+    }
+
+    #sweep {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 120px;
+      z-index: 2;
+      pointer-events: none;
+      background: linear-gradient(180deg, transparent, var(--accent-faint), transparent);
+      animation: sweep 9s linear infinite;
+      opacity: 0.5;
+    }
+
+    @keyframes sweep {
+      0% { top: -140px; }
+      100% { top: 100vh; }
+    }
+
+    /* ---------------------- HUD panels ---------------------- */
+    .hud-panel {
+      background: linear-gradient(160deg, rgba(4, 28, 38, 0.82), rgba(2, 10, 14, 0.88));
+      border: 1px solid var(--accent-dim);
+      box-shadow: 0 0 18px rgba(0, 229, 255, 0.10), inset 0 0 30px rgba(0, 229, 255, 0.04);
+      backdrop-filter: blur(10px);
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+      padding: 16px 18px;
+      pointer-events: auto;
+      animation: panel-in 0.6s ease-out backwards;
+    }
+
+    @keyframes panel-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .hud-panel h2, .hud-panel h3 {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-color);
+      text-shadow: 0 0 8px var(--accent-dim);
+      margin: 0 0 12px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--accent-faint);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hud-panel h2::before, .hud-panel h3::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      background: var(--accent-color);
+      box-shadow: 0 0 6px var(--accent-color);
+      clip-path: polygon(0 0, 100% 0, 100% 100%);
+    }
+
+    .hidden { display: none !important; }
+
+    /* ---------------------- Top bar ---------------------- */
+    #top-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 52px;
+      z-index: 11;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      background: linear-gradient(180deg, rgba(3, 18, 24, 0.92), rgba(3, 18, 24, 0.55));
+      border-bottom: 1px solid var(--accent-dim);
+      box-shadow: 0 0 24px rgba(0, 229, 255, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    #brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-weight: 900;
+      letter-spacing: 4px;
+      font-size: 15px;
+      color: var(--accent-color);
+      text-shadow: 0 0 12px var(--accent-dim);
+      text-transform: uppercase;
+    }
+
+    #brand .ring {
+      width: 22px;
+      height: 22px;
+      border: 2px solid var(--accent-color);
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 3.5s linear infinite;
+      box-shadow: 0 0 10px var(--accent-dim);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #brand .sub {
+      font-family: var(--font-ui);
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #6fb6c9;
+    }
+
+    #clock-block {
+      text-align: center;
+      line-height: 1.1;
+    }
+
+    #hud-clock {
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--accent-color);
+      text-shadow: 0 0 10px var(--accent-dim);
+      letter-spacing: 2px;
+    }
+
+    #hud-date {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #6fb6c9;
+      text-transform: uppercase;
+    }
+
+    #top-actions { display: flex; gap: 8px; }
+
+    /* ---------------------- Buttons ---------------------- */
+    .btn {
+      font-family: var(--font-ui);
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: rgba(0, 229, 255, 0.06);
+      border: 1px solid var(--accent-dim);
+      color: var(--text-color);
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 12px;
+      clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:hover {
+      background: rgba(0, 229, 255, 0.16);
+      box-shadow: 0 0 12px var(--accent-dim);
+    }
+
+    .btn.small { padding: 6px 8px; font-size: 11px; flex: 1; }
+
+    /* ---------------------- Left control panel ---------------------- */
+    #left-panel {
+      position: absolute;
+      top: 66px;
+      left: 18px;
+      z-index: 10;
+      width: 285px;
+      max-height: calc(100vh - 90px);
+      overflow-y: auto;
+    }
+
+    #left-panel::-webkit-scrollbar { width: 4px; }
+    #left-panel::-webkit-scrollbar-thumb { background: var(--accent-dim); }
+
+    .control-group { margin-bottom: 14px; }
+
+    .control-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      color: #7fbdd0;
+    }
+
+    select, input[type="range"] { width: 100%; }
+
+    select {
+      padding: 8px;
+      background: rgba(0, 229, 255, 0.05);
+      border: 1px solid var(--accent-dim);
+      color: var(--text-color);
+      font-family: var(--font-ui);
+      font-weight: 600;
+      letter-spacing: 1px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    option { background: #04202a; color: var(--text-color); }
+
+    input[type="range"] { accent-color: var(--accent-color); height: 18px; }
+
+    .color-picker-wrapper { display: flex; align-items: center; gap: 12px; }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+      border: 2px solid var(--accent-dim);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-dim);
+    }
+
+    #color-hex {
+      font-family: var(--font-display);
+      font-size: 12px;
+      letter-spacing: 1px;
+      color: var(--accent-color);
+    }
+
+    .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+
+    .object-info {
+      font-family: var(--font-display);
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: var(--accent-color);
+      text-shadow: 0 0 8px var(--accent-dim);
+      margin-top: 4px;
+      min-height: 14px;
+      text-transform: uppercase;
+    }
+
+    .hint-box {
+      font-size: 11px;
+      color: #5d93a5;
+      margin-top: 8px;
+      line-height: 1.6;
+      letter-spacing: 0.4px;
+    }
+
+    /* ---------------------- Right system panel ---------------------- */
+    #right-panel {
+      position: absolute;
+      top: 66px;
+      right: 18px;
+      z-index: 10;
+      width: 265px;
+    }
+
+    .readout-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #7fbdd0;
+      padding: 5px 0;
+      border-bottom: 1px dashed rgba(0, 229, 255, 0.12);
+    }
+
+    .readout-row .value {
+      font-family: var(--font-display);
+      font-size: 11px;
+      color: var(--accent-color);
+      text-shadow: 0 0 8px var(--accent-dim);
+    }
+
+    .readout-row .value.warn { color: var(--warn-color); text-shadow: 0 0 8px rgba(255, 179, 71, 0.4); }
+
+    .gauges {
+      display: flex;
+      justify-content: space-around;
+      margin: 14px 0 6px;
+    }
+
+    .gauge { text-align: center; }
+
+    .gauge svg { width: 72px; height: 72px; transform: rotate(-90deg); }
+
+    .gauge .track { fill: none; stroke: rgba(0, 229, 255, 0.12); stroke-width: 5; }
+
+    .gauge .bar {
+      fill: none;
+      stroke: var(--accent-color);
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-dasharray: 150.8;
+      stroke-dashoffset: 150.8;
+      filter: drop-shadow(0 0 4px var(--accent-color));
+      transition: stroke-dashoffset 0.4s;
+    }
+
+    .gauge .num {
+      font-family: var(--font-display);
+      font-size: 15px;
+      margin-top: -50px;
+      position: relative;
+      color: var(--accent-color);
+      text-shadow: 0 0 8px var(--accent-dim);
+    }
+
+    .gauge .lbl {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #6fb6c9;
+      margin-top: 32px;
+      text-transform: uppercase;
+    }
+
+    .status-box {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      padding: 10px 12px;
+      background: rgba(0, 229, 255, 0.04);
+      border-left: 3px solid #46707e;
+      margin-top: 12px;
+      line-height: 1.5;
+      min-height: 38px;
+    }
+
+    .status-box.active {
+      border-left-color: var(--accent-color);
+      color: var(--accent-color);
+      text-shadow: 0 0 8px var(--accent-faint);
+    }
+
+    .blink-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-color);
+      box-shadow: 0 0 8px var(--accent-color);
+      margin-right: 6px;
+      animation: blink 1.4s infinite;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* ---------------------- Activity feed ---------------------- */
+    #feed-panel {
+      position: absolute;
+      left: 18px;
+      bottom: 18px;
+      z-index: 10;
+      width: 285px;
+      max-height: 190px;
+    }
+
+    #activity-log { font-size: 12px; }
+
+    .log-entry {
+      display: flex;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px dashed rgba(0, 229, 255, 0.10);
+      animation: panel-in 0.3s ease-out;
+      letter-spacing: 0.4px;
+    }
+
+    .log-time {
+      font-family: var(--font-display);
+      font-size: 10px;
+      color: #5d93a5;
+      white-space: nowrap;
+      padding-top: 2px;
+    }
+
+    /* ---------------------- Webcam HUD frame ---------------------- */
+    #webcam-wrapper {
+      position: absolute;
+      bottom: 18px;
+      right: 18px;
+      width: 200px;
+      height: 150px;
+      z-index: 10;
+      background: #000;
+      border: 1px solid var(--accent-dim);
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.15);
+    }
+
+    #webcam, #hand-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror so it behaves like a mirror */
+    }
+
+    /* corner brackets */
+    #webcam-wrapper::before, #webcam-wrapper::after,
+    #cam-label::before, #cam-label::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--accent-color);
+      filter: drop-shadow(0 0 4px var(--accent-color));
+      z-index: 3;
+    }
+
+    #webcam-wrapper::before { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+    #webcam-wrapper::after { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+    #cam-label::before { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+    #cam-label::after { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+
+    #cam-label {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    #cam-label span {
+      position: absolute;
+      top: 5px;
+      left: 7px;
+      font-family: var(--font-display);
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--accent-color);
+      text-shadow: 0 0 6px #000, 0 0 8px var(--accent-dim);
+    }
+
+    #cam-scan {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 24px;
+      z-index: 2;
+      pointer-events: none;
+      background: linear-gradient(180deg, transparent, rgba(0, 229, 255, 0.18), transparent);
+      animation: camscan 3.2s linear infinite;
+    }
+
+    @keyframes camscan {
+      0% { top: -24px; }
+      100% { top: 150px; }
+    }
+
+    /* ---------------------- Keyboard overlay ---------------------- */
+    #keys-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 50;
+      width: 420px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 5px 0;
+      border-bottom: 1px dashed rgba(0, 229, 255, 0.10);
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+
+    .key-cap {
+      font-family: var(--font-display);
+      font-size: 11px;
+      color: var(--accent-color);
+      border: 1px solid var(--accent-dim);
+      padding: 3px 8px;
+      min-width: 64px;
+      text-align: center;
+      background: rgba(0, 229, 255, 0.05);
+      box-shadow: 0 0 8px rgba(0, 229, 255, 0.08);
+      white-space: nowrap;
+    }
+
+    /* ---------------------- Boot screen ---------------------- */
+    #loading {
+      position: absolute;
+      inset: 0;
+      z-index: 100;
+      background: radial-gradient(ellipse at center, rgba(2, 14, 20, 0.94), rgba(1, 5, 8, 0.99));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      transition: opacity 0.6s;
+    }
+
+    #boot-title {
+      font-family: var(--font-display);
+      font-size: 34px;
+      font-weight: 900;
+      letter-spacing: 10px;
+      color: var(--accent-color);
+      text-shadow: 0 0 24px var(--accent-dim), 0 0 60px var(--accent-faint);
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    #boot-sub {
+      font-size: 14px;
+      letter-spacing: 4px;
+      color: #6fb6c9;
+      text-transform: uppercase;
+      text-align: center;
+      max-width: 80vw;
+    }
+
+    #boot-bar {
+      width: 320px;
+      height: 3px;
+      background: rgba(0, 229, 255, 0.12);
+      overflow: hidden;
+    }
+
+    #boot-bar::after {
+      content: "";
+      display: block;
+      height: 100%;
+      width: 40%;
+      background: var(--accent-color);
+      box-shadow: 0 0 12px var(--accent-color);
+      animation: bootbar 1.6s ease-in-out infinite;
+    }
+
+    @keyframes bootbar {
+      0% { margin-left: -40%; }
+      100% { margin-left: 100%; }
+    }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div id="canvas-container"></div>
+  <div id="bg-fx"></div>
+  <div id="scanlines"></div>
+  <div id="sweep"></div>
+
+  <div id="loading">
+    <div id="boot-title">Point Cloud Studio</div>
+    <div id="boot-bar"></div>
+    <div id="boot-sub" data-i18n="loading">Initializing systems...</div>
+  </div>
+
+  <!-- ==================== TOP BAR ==================== -->
+  <div id="top-bar">
+    <div id="brand">
+      <div class="ring"></div>
+      Point Cloud Studio <span class="sub">v2.0 // COMMAND CENTER</span>
+    </div>
+    <div id="clock-block">
+      <div id="hud-clock">--:--:--</div>
+      <div id="hud-date"></div>
+    </div>
+    <div id="top-actions">
+      <button class="btn" id="btn-keys" data-i18n="btnKeys">Keys</button>
+      <button class="btn" id="btn-lang">Español</button>
+      <button class="btn" id="btn-fullscreen" data-i18n="btnFullscreen">Fullscreen</button>
+    </div>
+  </div>
+
+  <!-- ==================== LEFT: CONTROLS ==================== -->
+  <div id="left-panel" class="hud-panel hud-hidable">
+    <h2 data-i18n="controlsTitle">Controls</h2>
+
+    <div class="control-group">
+      <label data-i18n="objectsLabel">Objects (point ☝ at one to select it)</label>
+      <div class="btn-row">
+        <button class="btn small" id="btn-add" data-i18n="btnAdd">Add</button>
+        <button class="btn small" id="btn-duplicate" data-i18n="btnDuplicate">Duplicate</button>
+        <button class="btn small" id="btn-delete" data-i18n="btnDelete">Delete</button>
+      </div>
+      <div class="object-info" id="object-info"></div>
+    </div>
+
+    <div class="control-group">
+      <label data-i18n="shapeLabel">Shape of selected object</label>
+      <select id="model-select">
+        <option value="sphere" data-i18n="shape_sphere">Sphere</option>
+        <option value="cube" data-i18n="shape_cube">Cube</option>
+        <option value="torus" data-i18n="shape_torus">Torus</option>
+        <option value="galaxy" data-i18n="shape_galaxy">Spiral Galaxy</option>
+        <option value="tree" data-i18n="shape_tree">Christmas Tree</option>
+        <option value="saturn" data-i18n="shape_saturn">Saturn</option>
+        <option value="heart" data-i18n="shape_heart">Heart</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label data-i18n="colorLabel">Color of selected object</label>
+      <div class="color-picker-wrapper">
+        <input type="color" id="particle-color" value="#00e5ff" />
+        <span id="color-hex">#00e5ff</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label data-i18n="sculptLabel">Sculpt mode (pinch thumb + index finger)</label>
+      <select id="sculpt-mode">
+        <option value="pull" data-i18n="sculpt_pull">Pull (raise toward you)</option>
+        <option value="push" data-i18n="sculpt_push">Push (press into the surface)</option>
+        <option value="smooth" data-i18n="sculpt_smooth">Smooth (restore shape)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label><span data-i18n="strengthLabel">Sculpt strength</span>: <span id="strength-value">1</span></label>
+      <input type="range" id="sculpt-strength" min="0.1" max="3" step="0.1" value="1" />
+    </div>
+
+    <div class="control-group">
+      <label><span data-i18n="radiusLabel">Sculpt radius</span>: <span id="radius-value">8</span></label>
+      <input type="range" id="sculpt-radius" min="3" max="20" step="1" value="8" />
+    </div>
+
+    <div class="btn-row">
+      <button class="btn small" id="btn-reset" data-i18n="btnReset">Reset shape</button>
+      <button class="btn small" id="btn-export" data-i18n="btnExport">Export PLY</button>
+    </div>
+
+    <div class="hint-box" data-i18n="hint">
+      Point ☝ to select · Open hand: rotate · Fist: move · Pinch: sculpt · Two hands: stretch to zoom &amp; tilt to rotate
+    </div>
+  </div>
+
+  <!-- ==================== RIGHT: SYSTEM ==================== -->
+  <div id="right-panel" class="hud-panel hud-hidable">
+    <h2 data-i18n="sysTitle">System</h2>
+
+    <div class="readout-row">
+      <span data-i18n="trackingLabel">Tracking</span>
+      <span id="tracking-status" class="value warn">NO SIGNAL</span>
+    </div>
+    <div class="readout-row">
+      <span data-i18n="handsLabel">Hands</span>
+      <span id="hands-count" class="value">0</span>
+    </div>
+    <div class="readout-row">
+      <span data-i18n="gestureLabel">Gesture</span>
+      <span id="gesture-name" class="value">—</span>
+    </div>
+    <div class="readout-row">
+      <span data-i18n="selectedLabel">Target</span>
+      <span id="selected-readout" class="value">—</span>
+    </div>
+
+    <div class="gauges">
+      <div class="gauge">
+        <svg viewBox="0 0 60 60">
+          <circle class="track" cx="30" cy="30" r="24"></circle>
+          <circle class="bar" id="fps-ring" cx="30" cy="30" r="24"></circle>
+        </svg>
+        <div class="num" id="fps-value">0</div>
+        <div class="lbl">FPS</div>
+      </div>
+      <div class="gauge">
+        <svg viewBox="0 0 60 60">
+          <circle class="track" cx="30" cy="30" r="24"></circle>
+          <circle class="bar" id="particles-ring" cx="30" cy="30" r="24"></circle>
+        </svg>
+        <div class="num" id="particles-value">0</div>
+        <div class="lbl" data-i18n="particlesLabel">Particles</div>
+      </div>
+    </div>
+
+    <div class="status-box" id="gesture-status"></div>
+  </div>
+
+  <!-- ==================== BOTTOM LEFT: FEED ==================== -->
+  <div id="feed-panel" class="hud-panel hud-hidable">
+    <h3 data-i18n="feedTitle">Activity Feed</h3>
+    <div id="activity-log"></div>
+  </div>
+
+  <!-- ==================== WEBCAM ==================== -->
+  <div id="webcam-wrapper">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="hand-overlay"></canvas>
+    <div id="cam-scan"></div>
+    <div id="cam-label"><span data-i18n="camLabel">CAM 01 // HAND TRACKING</span></div>
+  </div>
+
+  <!-- ==================== KEYBOARD OVERLAY ==================== -->
+  <div id="keys-overlay" class="hud-panel hidden">
+    <h2 data-i18n="keysTitle">Keyboard Controls</h2>
+    <div id="keys-list"></div>
+  </div>
+
+  <script>
+    // ---------------------------------------------------------------
+    // i18n — every UI string lives here. English is the default,
+    // the top-right button toggles Spanish.
+    // ---------------------------------------------------------------
+    const I18N = {
+      en: {
+        controlsTitle: "Controls",
+        objectsLabel: "Objects (point ☝ at one to select it)",
+        btnAdd: "Add",
+        btnDuplicate: "Duplicate",
+        btnDelete: "Delete",
+        objectLabel: "Object",
+        shapeLabel: "Shape of selected object",
+        shape_sphere: "Sphere",
+        shape_cube: "Cube",
+        shape_torus: "Torus",
+        shape_galaxy: "Spiral Galaxy",
+        shape_tree: "Christmas Tree",
+        shape_saturn: "Saturn",
+        shape_heart: "Heart",
+        colorLabel: "Color of selected object",
+        sculptLabel: "Sculpt mode (pinch thumb + index finger)",
+        sculpt_pull: "Pull (raise toward you)",
+        sculpt_push: "Push (press into the surface)",
+        sculpt_smooth: "Smooth (restore shape)",
+        strengthLabel: "Sculpt strength",
+        radiusLabel: "Sculpt radius",
+        btnReset: "Reset shape",
+        btnExport: "Export PLY",
+        btnFullscreen: "Fullscreen",
+        btnKeys: "Keys",
+        btnLang: "Español",
+        loading: "Initializing systems...",
+        statusWaiting: "Particles ready. Waiting for camera permission...",
+        statusCamReady: "Camera on. Show one or two hands to the camera.",
+        statusNoHand: "No hand detected. Place your hand inside the camera view (bottom right).",
+        statusMpFail: "Hand-tracking library failed to load. Check your connection — the particles still work with the mouse.",
+        statusCamFail: "Camera failed to start. Allow camera permission and open the page via localhost. Mouse controls still work.",
+        gRotate: "Open hand → rotating",
+        gMove: "Fist → moving the object",
+        gSculpt: "Pinch → sculpting",
+        gTwoHands: "Two hands → stretch to zoom, tilt to rotate",
+        gPoint: "Pointing ☝ — hold on an object to select it",
+        statusSelected: "Object selected ✓",
+        statusHold: "Hand detected — confirming gesture...",
+        maxObjects: "Object limit reached (6).",
+        cantDeleteLast: "Cannot delete the last object.",
+        scale: "Scale",
+        exported: "Point cloud exported as PLY (open it in Blender or MeshLab).",
+        hint: "Point ☝ to select · Open hand: rotate · Fist: move · Pinch: sculpt · Two hands: stretch to zoom & tilt to rotate",
+        sysTitle: "System",
+        trackingLabel: "Tracking",
+        handsLabel: "Hands",
+        gestureLabel: "Gesture",
+        selectedLabel: "Target",
+        particlesLabel: "Particles",
+        feedTitle: "Activity Feed",
+        camLabel: "CAM 01 // HAND TRACKING",
+        keysTitle: "Keyboard Controls",
+        trackActive: "ACTIVE",
+        trackLost: "NO SIGNAL",
+        gname_none: "STANDBY",
+        gname_rotate: "ROTATE",
+        gname_move: "MOVE",
+        gname_sculpt: "SCULPT",
+        gname_point: "SELECT",
+        gname_two: "DUAL HAND",
+        logOnline: "System online. All modules loaded.",
+        logTrackOn: "Hand tracking acquired",
+        logTrackOff: "Hand tracking lost",
+        logAdd: "Object deployed",
+        logDup: "Object duplicated",
+        logDelete: "Object removed",
+        logSelect: "Target locked",
+        logExport: "Scene exported to PLY",
+        logReset: "Shape restored to base",
+        logShape: "Shape morphed",
+        logMode: "Sculpt mode",
+        logGridOn: "Grid enabled",
+        logGridOff: "Grid disabled",
+        logHud: "HUD panels toggled",
+        keySelect: "Select object 1–6",
+        keyAdd: "New object",
+        keyDup: "Duplicate object",
+        keyDel: "Delete object",
+        keyReset: "Reset shape",
+        keyExport: "Export PLY",
+        keyModes: "Sculpt: pull / push / smooth",
+        keyRadius: "Brush radius − / +",
+        keyStrength: "Brush strength − / +",
+        keyGrid: "Toggle floor grid",
+        keyHud: "Toggle HUD panels",
+        keyFull: "Fullscreen",
+        keyLang: "Switch language",
+        keyKeys: "Show / hide this help"
+      },
+      es: {
+        controlsTitle: "Controles",
+        objectsLabel: "Objetos (apunta ☝ a uno para seleccionarlo)",
+        btnAdd: "Añadir",
+        btnDuplicate: "Duplicar",
+        btnDelete: "Borrar",
+        objectLabel: "Objeto",
+        shapeLabel: "Forma del objeto seleccionado",
+        shape_sphere: "Esfera",
+        shape_cube: "Cubo",
+        shape_torus: "Toroide",
+        shape_galaxy: "Galaxia espiral",
+        shape_tree: "Árbol de Navidad",
+        shape_saturn: "Saturno",
+        shape_heart: "Corazón",
+        colorLabel: "Color del objeto seleccionado",
+        sculptLabel: "Modo escultura (pellizco: pulgar + índice)",
+        sculpt_pull: "Atraer (levanta hacia ti)",
+        sculpt_push: "Empujar (hunde la superficie)",
+        sculpt_smooth: "Suavizar (restaurar forma)",
+        strengthLabel: "Fuerza de escultura",
+        radiusLabel: "Radio de escultura",
+        btnReset: "Restaurar forma",
+        btnExport: "Exportar PLY",
+        btnFullscreen: "Pantalla completa",
+        btnKeys: "Teclas",
+        btnLang: "English",
+        loading: "Inicializando sistemas...",
+        statusWaiting: "Partículas listas. Esperando permiso de cámara...",
+        statusCamReady: "Cámara activa. Muestra una o dos manos a la cámara.",
+        statusNoHand: "No se detecta ninguna mano. Ponla dentro de la vista de cámara (abajo a la derecha).",
+        statusMpFail: "No se pudo cargar la librería de seguimiento de manos. Revisa tu conexión — las partículas siguen funcionando con el mouse.",
+        statusCamFail: "La cámara no pudo iniciarse. Permite el acceso y abre la página vía localhost. El mouse sigue funcionando.",
+        gRotate: "Mano abierta → rotando",
+        gMove: "Puño → moviendo el objeto",
+        gSculpt: "Pellizco → esculpiendo",
+        gTwoHands: "Dos manos → estira para hacer zoom, inclina para rotar",
+        gPoint: "Apuntando ☝ — mantén sobre un objeto para seleccionarlo",
+        statusSelected: "Objeto seleccionado ✓",
+        statusHold: "Mano detectada — confirmando gesto...",
+        maxObjects: "Límite de objetos alcanzado (6).",
+        cantDeleteLast: "No puedes borrar el último objeto.",
+        scale: "Escala",
+        exported: "Nube de puntos exportada como PLY (ábrela en Blender o MeshLab).",
+        hint: "Apunta ☝ para seleccionar · Mano abierta: rotar · Puño: mover · Pellizco: esculpir · Dos manos: estira para zoom e inclina para rotar",
+        sysTitle: "Sistema",
+        trackingLabel: "Rastreo",
+        handsLabel: "Manos",
+        gestureLabel: "Gesto",
+        selectedLabel: "Objetivo",
+        particlesLabel: "Partículas",
+        feedTitle: "Registro de actividad",
+        camLabel: "CAM 01 // RASTREO DE MANOS",
+        keysTitle: "Controles de teclado",
+        trackActive: "ACTIVO",
+        trackLost: "SIN SEÑAL",
+        gname_none: "EN ESPERA",
+        gname_rotate: "ROTAR",
+        gname_move: "MOVER",
+        gname_sculpt: "ESCULPIR",
+        gname_point: "SELECCIONAR",
+        gname_two: "DOS MANOS",
+        logOnline: "Sistema en línea. Módulos cargados.",
+        logTrackOn: "Rastreo de manos adquirido",
+        logTrackOff: "Rastreo de manos perdido",
+        logAdd: "Objeto desplegado",
+        logDup: "Objeto duplicado",
+        logDelete: "Objeto eliminado",
+        logSelect: "Objetivo fijado",
+        logExport: "Escena exportada a PLY",
+        logReset: "Forma restaurada",
+        logShape: "Forma transformada",
+        logMode: "Modo de escultura",
+        logGridOn: "Rejilla activada",
+        logGridOff: "Rejilla desactivada",
+        logHud: "Paneles HUD alternados",
+        keySelect: "Seleccionar objeto 1–6",
+        keyAdd: "Nuevo objeto",
+        keyDup: "Duplicar objeto",
+        keyDel: "Borrar objeto",
+        keyReset: "Restaurar forma",
+        keyExport: "Exportar PLY",
+        keyModes: "Escultura: atraer / empujar / suavizar",
+        keyRadius: "Radio del pincel − / +",
+        keyStrength: "Fuerza del pincel − / +",
+        keyGrid: "Alternar rejilla",
+        keyHud: "Alternar paneles HUD",
+        keyFull: "Pantalla completa",
+        keyLang: "Cambiar idioma",
+        keyKeys: "Mostrar / ocultar esta ayuda"
+      }
+    };
+
+    let currentLang = "en";
+    const t = (key) => I18N[currentLang][key] || key;
+
+    const SHORTCUTS = [
+      ["1 – 6", "keySelect"],
+      ["N", "keyAdd"],
+      ["C", "keyDup"],
+      ["DEL", "keyDel"],
+      ["R", "keyReset"],
+      ["P", "keyExport"],
+      ["Q / W / E", "keyModes"],
+      ["[ / ]", "keyRadius"],
+      ["− / =", "keyStrength"],
+      ["G", "keyGrid"],
+      ["H", "keyHud"],
+      ["F", "keyFull"],
+      ["L", "keyLang"],
+      ["K", "keyKeys"]
+    ];
+
+    function applyLanguage() {
+      document.documentElement.lang = currentLang;
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        el.textContent = t(el.dataset.i18n);
+      });
+      document.getElementById("btn-lang").textContent = t("btnLang");
+      const list = document.getElementById("keys-list");
+      if (list && list.replaceChildren) {
+        list.replaceChildren(...SHORTCUTS.map(([cap, key]) => {
+          const row = document.createElement("div");
+          row.className = "key-row";
+          const kc = document.createElement("span");
+          kc.className = "key-cap";
+          kc.textContent = cap;
+          const desc = document.createElement("span");
+          desc.textContent = t(key);
+          row.append(kc, desc);
+          return row;
+        }));
+      }
+      updateObjectInfo();
+      updateSystemReadout();
+    }
+
+    // ---------------------------------------------------------------
+    // HUD helpers: activity feed, clock, readouts
+    // ---------------------------------------------------------------
+    function logEvent(msg) {
+      const log = document.getElementById("activity-log");
+      if (!log || !log.prepend) return;
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      const time = document.createElement("span");
+      time.className = "log-time";
+      time.textContent = new Date().toLocaleTimeString("en-GB");
+      const text = document.createElement("span");
+      text.textContent = msg;
+      entry.append(time, text);
+      log.prepend(entry);
+      while (log.children.length > 6) log.removeChild(log.lastChild);
+    }
+
+    function startClock() {
+      const clockEl = document.getElementById("hud-clock");
+      const dateEl = document.getElementById("hud-date");
+      const tick = () => {
+        const now = new Date();
+        clockEl.textContent = now.toLocaleTimeString("en-GB");
+        dateEl.textContent = now.toLocaleDateString(currentLang === "es" ? "es-ES" : "en-US", {
+          weekday: "long", day: "numeric", month: "long", year: "numeric"
+        });
+      };
+      tick();
+      setInterval(tick, 1000);
+    }
+
+    const GAUGE_CIRC = 150.8; // 2πr for r=24
+
+    function setGauge(id, ratio) {
+      const el = document.getElementById(id);
+      if (el && el.style) {
+        el.style.strokeDashoffset = GAUGE_CIRC * (1 - Math.min(1, Math.max(0, ratio)));
+      }
+    }
+
+    function updateSystemReadout() {
+      const sel = document.getElementById("selected-readout");
+      const pv = document.getElementById("particles-value");
+      if (!sel || !pv) return;
+      const o = selectedObject();
+      sel.textContent = o
+        ? `#${selectedIndex + 1} ${t("shape_" + o.shape)} ×${o.targetScale.toFixed(1)}`
+        : "—";
+      const total = objects.length * PARTICLES_PER_OBJECT;
+      pv.textContent = total >= 1000 ? `${Math.round(total / 1000)}K` : total;
+      setGauge("particles-ring", total / (MAX_OBJECTS * PARTICLES_PER_OBJECT));
+    }
+
+    // ---------------------------------------------------------------
+    // Three.js scene + shape library
+    // ---------------------------------------------------------------
+    let scene, camera, renderer, controls, sculptCursor, pointerDot, pointerLine, floorGrid;
+
+    const PARTICLES_PER_OBJECT = 12000;
+    const MAX_OBJECTS = 6;
+
+    const SHAPES = ["sphere", "cube", "torus", "galaxy", "tree", "saturn", "heart"];
+    const shapeTargets = {}; // per-shape Float32Array of base positions
+    const shapeRadius = {};  // per-shape bounding radius, for selection rays
+    SHAPES.forEach((s) => { shapeTargets[s] = new Float32Array(PARTICLES_PER_OBJECT * 3); });
+
+    const BASE_MODEL_SCALE = 1.2;
+    const MIN_GESTURE_SCALE = 0.1;
+    const MAX_GESTURE_SCALE = 2.4;
+
+    function generateShapeTargets() {
+      for (let i = 0; i < PARTICLES_PER_OBJECT; i++) {
+        const i3 = i * 3;
+
+        // --- Sphere: points on a slightly thick spherical shell ---
+        {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const r = 15 + (Math.random() - 0.5) * 1.5;
+          shapeTargets.sphere[i3] = r * Math.sin(phi) * Math.cos(theta);
+          shapeTargets.sphere[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          shapeTargets.sphere[i3 + 2] = r * Math.cos(phi);
+        }
+
+        // --- Cube: points on the 6 faces of a cube shell ---
+        {
+          const size = 22;
+          const half = size / 2;
+          const face = Math.floor(Math.random() * 6);
+          const a = (Math.random() - 0.5) * size;
+          const b = (Math.random() - 0.5) * size;
+          const jitter = (Math.random() - 0.5) * 0.8;
+          let x, y, z;
+          if (face === 0) { x = half + jitter; y = a; z = b; }
+          else if (face === 1) { x = -half + jitter; y = a; z = b; }
+          else if (face === 2) { y = half + jitter; x = a; z = b; }
+          else if (face === 3) { y = -half + jitter; x = a; z = b; }
+          else if (face === 4) { z = half + jitter; x = a; y = b; }
+          else { z = -half + jitter; x = a; y = b; }
+          shapeTargets.cube[i3] = x;
+          shapeTargets.cube[i3 + 1] = y;
+          shapeTargets.cube[i3 + 2] = z;
+        }
+
+        // --- Torus: classic donut, R = ring radius, r = tube radius ---
+        {
+          const R = 14, r = 5;
+          const u = Math.random() * Math.PI * 2;
+          const v = Math.random() * Math.PI * 2;
+          const tube = r * (0.85 + Math.random() * 0.15);
+          shapeTargets.torus[i3] = (R + tube * Math.cos(v)) * Math.cos(u);
+          shapeTargets.torus[i3 + 1] = tube * Math.sin(v);
+          shapeTargets.torus[i3 + 2] = (R + tube * Math.cos(v)) * Math.sin(u);
+        }
+
+        // --- Spiral galaxy: 3 arms winding out from a bright core ---
+        {
+          const arm = i % 3;
+          const armOffset = (arm / 3) * Math.PI * 2;
+          const dist = Math.pow(Math.random(), 0.6) * 24;
+          const spin = dist * 0.28;
+          const spread = (Math.random() - 0.5) * (1.4 + dist * 0.12);
+          const angle = armOffset + spin + spread * 0.25;
+          shapeTargets.galaxy[i3] = Math.cos(angle) * dist + (Math.random() - 0.5) * 1.5;
+          shapeTargets.galaxy[i3 + 1] = (Math.random() - 0.5) * (2.5 - dist * 0.06);
+          shapeTargets.galaxy[i3 + 2] = Math.sin(angle) * dist + (Math.random() - 0.5) * 1.5;
+        }
+
+        // --- Christmas tree: star on top, cone layers, trunk ---
+        if (i < PARTICLES_PER_OBJECT * 0.08) {
+          const angle = Math.random() * Math.PI * 2;
+          const starWave = Math.abs(Math.sin(angle * 5));
+          const r = (1.8 + starWave * 3.0) * Math.sqrt(Math.random());
+          shapeTargets.tree[i3] = r * Math.cos(angle);
+          shapeTargets.tree[i3 + 1] = 20 + (Math.random() - 0.5) * 1.5;
+          shapeTargets.tree[i3 + 2] = r * Math.sin(angle) * 0.45;
+        } else if (i < PARTICLES_PER_OBJECT * 0.92) {
+          const h = Math.random() * 32 - 14;
+          const layerNormalized = (h + 14) / 32;
+          const layerProgress = (layerNormalized * 4) % 1.0;
+          let baseRadius = (1.0 - layerNormalized) * 18;
+          baseRadius *= Math.pow(layerProgress, 0.42);
+          const angle = Math.random() * Math.PI * 2;
+          const r = Math.max(0, baseRadius * Math.sqrt(Math.random()) + (Math.random() - 0.5) * 2.5);
+          shapeTargets.tree[i3] = Math.cos(angle) * r;
+          shapeTargets.tree[i3 + 1] = h;
+          shapeTargets.tree[i3 + 2] = Math.sin(angle) * r;
+        } else {
+          const h = Math.random() * 5 - 19;
+          const r = Math.random() * 2.2;
+          const angle = Math.random() * Math.PI * 2;
+          shapeTargets.tree[i3] = Math.cos(angle) * r;
+          shapeTargets.tree[i3 + 1] = h;
+          shapeTargets.tree[i3 + 2] = Math.sin(angle) * r;
+        }
+
+        // --- Saturn: flattened planet body + banded rings ---
+        if (i < PARTICLES_PER_OBJECT * 0.42) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const latFlatten = 0.82 + Math.random() * 0.06;
+          const r = 11.5 * Math.cbrt(Math.random());
+          shapeTargets.saturn[i3] = r * Math.sin(phi) * Math.cos(theta);
+          shapeTargets.saturn[i3 + 1] = r * Math.sin(phi) * Math.sin(theta) * latFlatten;
+          shapeTargets.saturn[i3 + 2] = r * Math.cos(phi);
+        } else {
+          const ringBand = Math.random();
+          const bandBase =
+            ringBand < 0.22 ? 14.5 :
+            ringBand < 0.48 ? 18.5 :
+            ringBand < 0.72 ? 23.5 :
+            28.5;
+          const rRing = bandBase + Math.random() * 3.5 + Math.sin(bandBase * 1.7 + i * 0.013) * 0.9;
+          const thetaRing = Math.random() * Math.PI * 2;
+          const ringRipple = Math.sin(thetaRing * 10 + rRing * 0.9) * 0.45 + Math.sin(thetaRing * 23) * 0.18;
+          const ringThickness = (Math.random() - 0.5) * (0.45 + ringBand * 0.85);
+          shapeTargets.saturn[i3] = (rRing + ringRipple) * Math.cos(thetaRing);
+          shapeTargets.saturn[i3 + 1] = ringThickness;
+          shapeTargets.saturn[i3 + 2] = (rRing + ringRipple) * Math.sin(thetaRing);
+        }
+
+        // --- Heart: parametric heart curve extruded in Z ---
+        {
+          const t2 = Math.PI * 2 * Math.random();
+          const u = Math.PI * (Math.random() - 0.5);
+          const x = 16 * Math.pow(Math.sin(t2), 3);
+          const y = 13 * Math.cos(t2) - 5 * Math.cos(2 * t2) - 2 * Math.cos(3 * t2) - Math.cos(4 * t2);
+          const z = 6 * Math.sin(u) * (1 - Math.abs(Math.sin(t2)));
+          shapeTargets.heart[i3] = x * 1.35;
+          shapeTargets.heart[i3 + 1] = y * 1.35;
+          shapeTargets.heart[i3 + 2] = z * 1.35;
+        }
+      }
+
+      // Bounding radius per shape (largest distance from the center),
+      // used to test whether a pointing ray hits an object.
+      SHAPES.forEach((s) => {
+        const a = shapeTargets[s];
+        let maxSq = 0;
+        for (let i = 0; i < a.length; i += 3) {
+          const d = a[i] * a[i] + a[i + 1] * a[i + 1] + a[i + 2] * a[i + 2];
+          if (d > maxSq) maxSq = d;
+        }
+        shapeRadius[s] = Math.sqrt(maxSq);
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // PointObject — one independent particle object in the scene, with
+    // its own shape, color, sculpt deformations and transform targets.
+    // ---------------------------------------------------------------
+    class PointObject {
+      constructor(shape, colorHex) {
+        this.shape = shape;
+        this.targets = shapeTargets[shape];
+        this.deform = new Float32Array(PARTICLES_PER_OBJECT * 3);
+        this.baseColor = new THREE.Color(colorHex);
+
+        this.geometry = new THREE.BufferGeometry();
+        this.geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(new Float32Array(this.targets), 3)
+        );
+        this.material = new THREE.PointsMaterial({
+          size: 0.34,
+          color: this.baseColor.clone(),
+          transparent: true,
+          opacity: 0.95,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          sizeAttenuation: true
+        });
+        this.points = new THREE.Points(this.geometry, this.material);
+        scene.add(this.points);
+
+        // Transform targets — the gesture system writes these, and
+        // update() eases the real transform toward them every frame.
+        this.scale = 1.0;
+        this.targetScale = 1.0;
+        this.targetRotX = 0;
+        this.targetRotY = 0;
+        this.targetRotZ = 0;
+        this.targetPos = new THREE.Vector3();
+      }
+
+      setShape(shape) {
+        this.shape = shape;
+        this.targets = shapeTargets[shape];
+        this.deform.fill(0); // sculpt edits belong to the old shape
+      }
+
+      setSelectedLook(selected) {
+        this.material.opacity = selected ? 0.95 : 0.45;
+        this.material.size = selected ? 0.34 : 0.26;
+      }
+
+      update() {
+        this.scale += (this.targetScale - this.scale) * 0.18;
+        const s = BASE_MODEL_SCALE * this.scale;
+        const p = this.points;
+
+        p.rotation.x += (this.targetRotX - p.rotation.x) * 0.12;
+        p.rotation.y += (this.targetRotY - p.rotation.y) * 0.12;
+        p.rotation.z += (this.targetRotZ - p.rotation.z) * 0.12;
+        p.position.lerp(this.targetPos, 0.15);
+        p.updateMatrixWorld();
+
+        const pos = this.geometry.attributes.position.array;
+        const tgt = this.targets;
+        const d = this.deform;
+        for (let i = 0; i < PARTICLES_PER_OBJECT; i++) {
+          const i3 = i * 3;
+          pos[i3] += (tgt[i3] * s + d[i3] - pos[i3]) * 0.14;
+          pos[i3 + 1] += (tgt[i3 + 1] * s + d[i3 + 1] - pos[i3 + 1]) * 0.14;
+          pos[i3 + 2] += (tgt[i3 + 2] * s + d[i3 + 2] - pos[i3 + 2]) * 0.14;
+        }
+        this.geometry.attributes.position.needsUpdate = true;
+      }
+
+      dispose() {
+        scene.remove(this.points);
+        this.geometry.dispose();
+        this.material.dispose();
+      }
+    }
+
+    const objects = [];
+    let selectedIndex = 0;
+
+    function selectedObject() {
+      return objects[selectedIndex] || null;
+    }
+
+    // World-space bounding radius, with margin so pointing is forgiving.
+    function objectRadius(o) {
+      return (shapeRadius[o.shape] || 15) * BASE_MODEL_SCALE * o.scale + 3;
+    }
+
+    function updateObjectInfo() {
+      const el = document.getElementById("object-info");
+      if (!el) return;
+      const o = selectedObject();
+      if (!o) { el.textContent = ""; return; }
+      el.textContent = `${t("objectLabel")} ${selectedIndex + 1}/${objects.length} — ${t("shape_" + o.shape)}`;
+    }
+
+    // Reflect the selected object's shape and color in the side panel.
+    function syncPanelToSelection() {
+      const o = selectedObject();
+      if (!o) return;
+      document.getElementById("model-select").value = o.shape;
+      const hex = "#" + o.baseColor.getHexString();
+      document.getElementById("particle-color").value = hex;
+      document.getElementById("color-hex").textContent = hex;
+      updateObjectInfo();
+      updateSystemReadout();
+    }
+
+    function selectObject(index) {
+      selectedIndex = index;
+      objects.forEach((o, i) => o.setSelectedLook(i === selectedIndex));
+      syncPanelToSelection();
+    }
+
+    function addObject(shape, colorHex) {
+      if (objects.length >= MAX_OBJECTS) return null;
+      const o = new PointObject(shape, colorHex);
+      // Spread new objects on a loose ring so they don't overlap.
+      const n = objects.length;
+      if (n > 0) {
+        const ang = n * 2.4; // golden-angle spacing
+        o.targetPos.set(Math.cos(ang) * 26, Math.sin(ang) * 14, 0);
+        o.points.position.copy(o.targetPos);
+      }
+      objects.push(o);
+      selectObject(objects.length - 1);
+      return o;
+    }
+
+    function duplicateSelected() {
+      const src = selectedObject();
+      if (!src || objects.length >= MAX_OBJECTS) return null;
+      const o = new PointObject(src.shape, "#" + src.baseColor.getHexString());
+      o.deform.set(src.deform); // sculpt edits come along
+      o.targetScale = src.targetScale;
+      o.targetRotX = src.targetRotX;
+      o.targetRotY = src.targetRotY;
+      o.targetRotZ = src.targetRotZ;
+      o.targetPos.copy(src.targetPos).x += 10;
+      o.targetPos.y += 5;
+      o.points.position.copy(o.targetPos);
+      objects.push(o);
+      selectObject(objects.length - 1);
+      return o;
+    }
+
+    function deleteSelected() {
+      if (objects.length <= 1) return false;
+      selectedObject().dispose();
+      objects.splice(selectedIndex, 1);
+      selectObject(Math.min(selectedIndex, objects.length - 1));
+      return true;
+    }
+
+    function initThree() {
+      const container = document.getElementById("canvas-container");
+
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x020608, 0.012);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 5, 58);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      generateShapeTargets();
+      addObject("sphere", document.getElementById("particle-color").value);
+
+      // Translucent sphere that shows the brush: it sticks to the
+      // surface being sculpted and matches the brush radius.
+      sculptCursor = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false })
+      );
+      sculptCursor.visible = false;
+      scene.add(sculptCursor);
+
+      // Laser pointer for the ☝ selection gesture: a dot that lands on
+      // whatever you aim at, plus a faint beam so the aim is readable.
+      pointerDot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.9, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false })
+      );
+      pointerDot.visible = false;
+      scene.add(pointerDot);
+
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+      pointerLine = new THREE.Line(
+        lineGeo,
+        new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.3 })
+      );
+      pointerLine.visible = false;
+      scene.add(pointerLine);
+
+      // Ground grid: gives the workspace a floor and depth reference,
+      // like the viewport grid in Blender or any CAD tool.
+      floorGrid = new THREE.GridHelper(240, 48, 0x0e7f96, 0x0a2f38);
+      floorGrid.position.y = -26;
+      floorGrid.material.transparent = true;
+      floorGrid.material.opacity = 0.55;
+      scene.add(floorGrid);
+
+      window.addEventListener("resize", onWindowResize);
+    }
+
+    // ---------------------------------------------------------------
+    // Hand analysis — turns 21 MediaPipe landmarks into gesture facts
+    // ---------------------------------------------------------------
+    // Landmark indices: 0 wrist, 4 thumb tip, 8 index tip, 9 middle
+    // base (MCP), 12 middle tip, 16 ring tip, 20 pinky tip, etc.
+    const pinchState = [false, false]; // hysteresis per hand
+    const handSmooth = [null, null];   // EMA-smoothed hand centers
+    const pinchSmooth = [null, null];  // EMA-smoothed pinch midpoints
+    const pointSmooth = [null, null];  // EMA-smoothed index fingertips
+
+    // Exponential moving average: kills landmark jitter while adding
+    // only ~1 frame of lag.
+    function emaPoint(store, idx, x, y, alpha) {
+      if (!store[idx]) store[idx] = { x, y };
+      const s = store[idx];
+      s.x += (x - s.x) * alpha;
+      s.y += (y - s.y) * alpha;
+      return s;
+    }
+
+    function analyzeHand(lm, handIndex) {
+      const wrist = lm[0];
+      const middleBase = lm[9];
+
+      // palmSize ~ distance wrist → middle knuckle. It grows when the
+      // hand approaches the camera, so we use it both as a distance
+      // proxy and to normalize other measurements (scale invariance).
+      const palmSize = Math.hypot(wrist.x - middleBase.x, wrist.y - middleBase.y) || 0.08;
+
+      const rawCenterX = (wrist.x + middleBase.x + lm[5].x + lm[17].x) * 0.25;
+      const rawCenterY = (wrist.y + middleBase.y + lm[5].y + lm[17].y) * 0.25;
+      const c = emaPoint(handSmooth, handIndex, rawCenterX, rawCenterY, 0.55);
+
+      const palmCenterX = (wrist.x + middleBase.x) * 0.5;
+      const palmCenterY = (wrist.y + middleBase.y) * 0.5;
+
+      const curled = (tipIdx, pipIdx, factor) =>
+        Math.hypot(lm[tipIdx].x - wrist.x, lm[tipIdx].y - wrist.y) <
+        Math.hypot(lm[pipIdx].x - wrist.x, lm[pipIdx].y - wrist.y) * factor;
+      const indexCurled = curled(8, 6, 1.08);
+      const middleCurled = curled(12, 10, 1.08);
+      const ringCurled = curled(16, 14, 1.08);
+      const pinkyCurled = curled(20, 18, 1.12);
+      const curledCount = [indexCurled, middleCurled, ringCurled, pinkyCurled].filter(Boolean).length;
+      // How many of middle/ring/pinky are extended — this is what
+      // separates a pinch (they stay up) from a fist (they curl).
+      const extendedMRP = [!middleCurled, !ringCurled, !pinkyCurled].filter(Boolean).length;
+
+      // Pinch: thumb tip ↔ index tip close, normalized by palm size,
+      // AND at least two of the other fingers extended. Without that
+      // second condition a fist (where thumb and index also touch)
+      // constantly reads as a pinch. Hysteresis prevents flicker.
+      const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / palmSize;
+      if (pinchState[handIndex]) {
+        if (pinchDist > 0.55 || extendedMRP === 0) pinchState[handIndex] = false;
+      } else if (pinchDist < 0.40 && extendedMRP >= 2) {
+        pinchState[handIndex] = true;
+      }
+      const isPinching = pinchState[handIndex];
+
+      // Smoothed pinch midpoint — the exact spot where thumb and index
+      // meet. The sculpt cursor follows this, not the palm center.
+      const pm = emaPoint(
+        pinchSmooth, handIndex,
+        (lm[4].x + lm[8].x) * 0.5, (lm[4].y + lm[8].y) * 0.5, 0.6
+      );
+
+      // Pointing ☝: index extended while middle and ring are curled.
+      // Used to aim at objects and select them.
+      const isPointing = !isPinching && !indexCurled && middleCurled && ringCurled;
+      const pt = emaPoint(pointSmooth, handIndex, lm[8].x, lm[8].y, 0.6);
+
+      // Fist: fingertips close to the palm center relative to palm
+      // size, with the index also curled (otherwise it's pointing).
+      const spread = (
+        Math.hypot(lm[4].x - palmCenterX, lm[4].y - palmCenterY) +
+        Math.hypot(lm[8].x - palmCenterX, lm[8].y - palmCenterY) +
+        Math.hypot(lm[12].x - palmCenterX, lm[12].y - palmCenterY) +
+        Math.hypot(lm[16].x - palmCenterX, lm[16].y - palmCenterY) +
+        Math.hypot(lm[20].x - palmCenterX, lm[20].y - palmCenterY)
+      ) / 5;
+      const openness = spread / palmSize;
+      const isFist = !isPinching && indexCurled && openness < 1.9 && curledCount >= 3;
+
+      return {
+        centerX: c.x, centerY: c.y,
+        pinchX: pm.x, pinchY: pm.y,
+        pointX: pt.x, pointY: pt.y,
+        palmSize, isPinching, isFist, isPointing, openness
+      };
+    }
+
+    // Convert a normalized (0..1) hand position into a RAY through the
+    // actual camera — exactly like a mouse pick. The hand coords become
+    // normalized device coordinates (X negated because the webcam
+    // preview is mirrored), then unproject through the projection
+    // matrix. Pointing, sculpting and moving all stay aligned with
+    // what you see on screen, even after orbiting with the mouse.
+    const _ndc = new THREE.Vector3();
+    function handRayDir(cx, cy, out) {
+      _ndc.set(-(cx - 0.5) * 2, -(cy - 0.5) * 2, 0.5).unproject(camera);
+      return out.copy(_ndc).sub(camera.position).normalize();
+    }
+
+    // ---------------------------------------------------------------
+    // Gesture state machine. Two ideas make this precise:
+    //
+    // 1. DEBOUNCE — a new gesture must hold for CONFIRM_FRAMES frames
+    //    before it activates, so a noisy single-frame misdetection
+    //    can't hijack control. During the transition the object holds
+    //    perfectly still.
+    //
+    // 2. RELATIVE CONTROL — when a gesture activates we snapshot both
+    //    the hand and the object state (gestureRef), then apply only
+    //    the DELTA of hand movement, like a mouse drag. Re-entering
+    //    the frame never makes the object jump, and losing the hand
+    //    never resets anything.
+    // ---------------------------------------------------------------
+    let activeGesture = "none";
+    let pendingGesture = "none";
+    let pendingFrames = 0;
+    let gestureRef = null;
+    const CONFIRM_FRAMES = 3;
+
+    // Pointing/selection state: dwell on an object to select it.
+    let hoverIndex = -1;
+    let hoverFrames = 0;
+    let hoverStrength = 0;
+    const DWELL_FRAMES = 20; // ~0.7s at 30fps
+
+    function captureRef(gesture, ctx) {
+      const o = selectedObject();
+      if (!o) return null;
+      if (gesture === "two") {
+        const [a, b] = ctx;
+        return {
+          dist: Math.hypot(a.centerX - b.centerX, a.centerY - b.centerY) || 0.001,
+          angle: Math.atan2(b.centerY - a.centerY, -(b.centerX - a.centerX)),
+          midX: (a.centerX + b.centerX) * 0.5,
+          midY: (a.centerY + b.centerY) * 0.5,
+          scale: o.targetScale,
+          rotX: o.targetRotX,
+          rotY: o.targetRotY,
+          rotZ: o.targetRotZ
+        };
+      }
+      if (gesture === "rotate") {
+        return { x: ctx.centerX, y: ctx.centerY, rotX: o.targetRotX, rotY: o.targetRotY };
+      }
+      if (gesture === "move") {
+        return {
+          x: ctx.centerX, y: ctx.centerY,
+          pos: o.targetPos.clone(),
+          camDist: camera.position.distanceTo(o.points.position)
+        };
+      }
+      return null;
+    }
+
+    function updateGesture(raw, ctx) {
+      if (raw === activeGesture) {
+        pendingGesture = raw;
+        pendingFrames = 0;
+        return;
+      }
+      if (raw === pendingGesture) {
+        pendingFrames++;
+      } else {
+        pendingGesture = raw;
+        pendingFrames = 1;
+      }
+      if (pendingFrames >= CONFIRM_FRAMES) {
+        activeGesture = raw;
+        pendingFrames = 0;
+        gestureRef = ctx ? captureRef(raw, ctx) : null;
+        if (activeGesture !== "point") {
+          hoverIndex = -1;
+          hoverFrames = 0;
+        }
+      }
+    }
+
+    // Ray → object bounding-sphere test. Returns the index of the
+    // nearest object hit by the ray, or -1. rayHitT is the distance to
+    // the sphere's ENTRY point, so a pointer dot can sit on the surface.
+    let rayHitT = 0;
+    function rayHitObjects(origin, dir) {
+      let best = -1;
+      let bestT = Infinity;
+      for (let i = 0; i < objects.length; i++) {
+        const c = objects[i].points.position;
+        const vx = c.x - origin.x;
+        const vy = c.y - origin.y;
+        const vz = c.z - origin.z;
+        const t = vx * dir.x + vy * dir.y + vz * dir.z;
+        if (t < 0) continue;
+        const d2 = vx * vx + vy * vy + vz * vz - t * t;
+        const r = objectRadius(objects[i]);
+        if (d2 >= r * r) continue;
+        const entry = t - Math.sqrt(r * r - d2);
+        if (entry < bestT) {
+          bestT = entry;
+          best = i;
+        }
+      }
+      rayHitT = bestT;
+      return best;
+    }
+
+    function applyGesture(raw, ctx, statusBox) {
+      // Only act while the confirmed gesture matches what the camera
+      // sees right now; during transitions everything holds still.
+      if (raw !== activeGesture || activeGesture === "none" || !ctx) {
+        statusBox.textContent = t("statusHold");
+        return;
+      }
+
+      const o = selectedObject();
+
+      if (activeGesture === "point") {
+        handRayDir(ctx.pointX, ctx.pointY, _rayDir);
+        const hit = rayHitObjects(camera.position, _rayDir);
+
+        // Laser-pointer feedback: a faint beam plus a dot that lands
+        // on the object you are aiming at (or floats if none). The dot
+        // grows while you hold, showing the selection progress.
+        const reach = hit >= 0 ? rayHitT : 110;
+        pointerDot.visible = true;
+        pointerDot.position.copy(camera.position).addScaledVector(_rayDir, reach);
+        const lp = pointerLine.geometry.attributes.position.array;
+        lp[0] = camera.position.x; lp[1] = camera.position.y - 6; lp[2] = camera.position.z;
+        lp[3] = pointerDot.position.x; lp[4] = pointerDot.position.y; lp[5] = pointerDot.position.z;
+        pointerLine.geometry.attributes.position.needsUpdate = true;
+        pointerLine.visible = true;
+
+        if (hit >= 0) {
+          if (hit === hoverIndex) {
+            hoverFrames++;
+          } else {
+            hoverIndex = hit;
+            hoverFrames = 0;
+          }
+          const progress = Math.min(1, hoverFrames / DWELL_FRAMES);
+          hoverStrength = 0.2 + 0.6 * progress;
+          pointerDot.scale.setScalar(1 + progress * 1.6);
+          if (hoverFrames >= DWELL_FRAMES && hit !== selectedIndex) {
+            selectObject(hit);
+            logEvent(`${t("logSelect")}: ${t("objectLabel")} ${hit + 1}`);
+            statusBox.textContent = t("statusSelected");
+            return;
+          }
+        } else {
+          hoverIndex = -1;
+          hoverFrames = 0;
+          pointerDot.scale.setScalar(1);
+        }
+        statusBox.textContent = t("gPoint");
+        return;
+      }
+
+      if (!o || !gestureRef) {
+        statusBox.textContent = t("statusHold");
+        return;
+      }
+
+      if (activeGesture === "two") {
+        const [a, b] = ctx;
+        const dist = Math.hypot(a.centerX - b.centerX, a.centerY - b.centerY) || 0.001;
+        o.targetScale = THREE.MathUtils.clamp(
+          gestureRef.scale * (dist / gestureRef.dist),
+          MIN_GESTURE_SCALE, MAX_GESTURE_SCALE
+        );
+
+        const midX = (a.centerX + b.centerX) * 0.5;
+        const midY = (a.centerY + b.centerY) * 0.5;
+        o.targetRotY = gestureRef.rotY - (midX - gestureRef.midX) * Math.PI * 2.0;
+        o.targetRotX = gestureRef.rotX + (midY - gestureRef.midY) * Math.PI * 1.4;
+
+        // Roll: tilt the line between your hands like a steering wheel.
+        // Normalized into ±90° so MediaPipe swapping hand order between
+        // frames (which flips the angle by 180°) can't cause a jump.
+        let dAngle = Math.atan2(b.centerY - a.centerY, -(b.centerX - a.centerX)) - gestureRef.angle;
+        while (dAngle > Math.PI / 2) dAngle -= Math.PI;
+        while (dAngle < -Math.PI / 2) dAngle += Math.PI;
+        o.targetRotZ = gestureRef.rotZ + dAngle;
+
+        statusBox.innerHTML = `${t("gTwoHands")}<br>${t("scale")}: ${o.targetScale.toFixed(2)}`;
+      } else if (activeGesture === "sculpt") {
+        handRayDir(ctx.pinchX, ctx.pinchY, sculptRayDir);
+        sculptActive = true;
+        sculptCursor.visible = true;
+        // Fallback position out in the working zone; applySculpt snaps
+        // the cursor onto the surface when the brush is over the object.
+        sculptCursor.position.copy(camera.position).addScaledVector(sculptRayDir, 65);
+        statusBox.textContent = t("gSculpt");
+      } else if (activeGesture === "move") {
+        // Screen-relative dragging: the object follows your fist 1:1
+        // on screen no matter how the camera is orbited. dx/dy are NDC
+        // deltas; at the object's distance from the camera, one NDC
+        // unit spans tan(fov/2) * distance world units vertically.
+        const dxN = -(ctx.centerX - gestureRef.x) * 2;
+        const dyN = -(ctx.centerY - gestureRef.y) * 2;
+        const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * gestureRef.camDist;
+        _camRight.setFromMatrixColumn(camera.matrixWorld, 0);
+        _camUp.setFromMatrixColumn(camera.matrixWorld, 1);
+        o.targetPos.copy(gestureRef.pos)
+          .addScaledVector(_camRight, dxN * half * camera.aspect)
+          .addScaledVector(_camUp, dyN * half);
+        o.targetPos.clampLength(0, 75);
+        if (o.targetPos.y < -20) o.targetPos.y = -20; // stay above the floor grid
+        statusBox.textContent = t("gMove");
+      } else if (activeGesture === "rotate") {
+        o.targetRotY = gestureRef.rotY - (ctx.centerX - gestureRef.x) * Math.PI * 2.2;
+        o.targetRotX = gestureRef.rotX + (ctx.centerY - gestureRef.y) * Math.PI * 1.5;
+        statusBox.textContent = t("gRotate");
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Sculpting — a screen-space brush, like real sculpting apps.
+    //
+    // The brush is a RAY from the camera through your pinch point.
+    // Pass 1 finds the front surface: the particle nearest to you
+    // inside the brush cylinder. Pass 2 only touches a thin shell
+    // behind that surface, so the far side of the object is never
+    // affected. Pull raises material toward you, push presses it in —
+    // both along your line of sight, which is what your eye expects.
+    // Only the SELECTED object is sculpted.
+    // ---------------------------------------------------------------
+    let sculptActive = false;
+    const sculptRayDir = new THREE.Vector3();
+    const _invMat = new THREE.Matrix4();
+    const _rayOrigin = new THREE.Vector3();
+    const _rayDir = new THREE.Vector3();
+    const _localDir = new THREE.Vector3();
+    const _camRight = new THREE.Vector3();
+    const _camUp = new THREE.Vector3();
+
+    function applySculpt(o) {
+      const mode = document.getElementById("sculpt-mode").value;
+      const strength = parseFloat(document.getElementById("sculpt-strength").value);
+      const radius = parseFloat(document.getElementById("sculpt-radius").value);
+      const radiusSq = radius * radius;
+
+      _rayDir.copy(sculptRayDir);
+
+      // Transform the ray into the object's local space. The object
+      // only rotates/translates (scale is baked into the positions),
+      // so distances along the ray match world distances.
+      _invMat.copy(o.points.matrixWorld).invert();
+      const lo = _rayOrigin.copy(camera.position).applyMatrix4(_invMat);
+      const ld = _localDir.copy(_rayDir).transformDirection(_invMat);
+      const ox = lo.x, oy = lo.y, oz = lo.z;
+      const ux = ld.x, uy = ld.y, uz = ld.z;
+
+      const positions = o.geometry.attributes.position.array;
+      const deform = o.deform;
+
+      // Pass 1: depth of the closest particle inside the brush.
+      let tFront = Infinity;
+      for (let i = 0; i < PARTICLES_PER_OBJECT; i++) {
+        const i3 = i * 3;
+        const dx = positions[i3] - ox;
+        const dy = positions[i3 + 1] - oy;
+        const dz = positions[i3 + 2] - oz;
+        const t = dx * ux + dy * uy + dz * uz;
+        if (t < 0) continue; // behind the camera
+        const r2 = dx * dx + dy * dy + dz * dz - t * t;
+        if (r2 > radiusSq) continue;
+        if (t < tFront) tFront = t;
+      }
+      if (!isFinite(tFront)) return; // brush is not over the object
+
+      // Snap the cursor onto the surface being touched and match its
+      // size to the brush radius — direct visual feedback.
+      sculptCursor.position.copy(camera.position).addScaledVector(_rayDir, tFront);
+      sculptCursor.scale.setScalar(radius / 1.2);
+
+      const depthBand = radius * 1.2; // shell thickness behind the surface
+      const rate = strength * 0.35;   // world units moved per frame at w=1
+
+      // Pass 2: sculpt only the front shell.
+      for (let i = 0; i < PARTICLES_PER_OBJECT; i++) {
+        const i3 = i * 3;
+        const dx = positions[i3] - ox;
+        const dy = positions[i3 + 1] - oy;
+        const dz = positions[i3 + 2] - oz;
+        const t = dx * ux + dy * uy + dz * uz;
+        if (t < tFront - 1 || t > tFront + depthBand) continue;
+        const r2 = dx * dx + dy * dy + dz * dz - t * t;
+        if (r2 > radiusSq) continue;
+
+        // Weight: strongest at brush center and at the front surface.
+        const w = (1 - Math.sqrt(r2) / radius) *
+                  (1 - Math.max(0, t - tFront) / depthBand);
+
+        if (mode === "smooth") {
+          const k = 1 - Math.min(0.35 * w * strength, 0.9);
+          deform[i3] *= k;
+          deform[i3 + 1] *= k;
+          deform[i3 + 2] *= k;
+        } else {
+          const dir = mode === "pull" ? -1 : 1; // pull = toward you
+          const move = dir * rate * w;
+          const mx = ux * move, my = uy * move, mz = uz * move;
+          deform[i3] += mx;
+          deform[i3 + 1] += my;
+          deform[i3 + 2] += mz;
+          // Also move the particle immediately, so the sculpt responds
+          // 1:1 instead of easing in through the morph lerp.
+          positions[i3] += mx;
+          positions[i3 + 1] += my;
+          positions[i3 + 2] += mz;
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Webcam + MediaPipe Hands (up to 2 hands)
+    // ---------------------------------------------------------------
+    const HAND_LINKS = [
+      [0,1],[1,2],[2,3],[3,4],       // thumb
+      [0,5],[5,6],[6,7],[7,8],       // index
+      [5,9],[9,10],[10,11],[11,12],  // middle
+      [9,13],[13,14],[14,15],[15,16],// ring
+      [13,17],[17,18],[18,19],[19,20],[0,17] // pinky + palm edge
+    ];
+
+    function drawHandOverlay(ctx, canvasEl, allHands) {
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent-color").trim() || "#00e5ff";
+      allHands.forEach((lm) => {
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        HAND_LINKS.forEach(([a, b]) => {
+          ctx.beginPath();
+          ctx.moveTo(lm[a].x * canvasEl.width, lm[a].y * canvasEl.height);
+          ctx.lineTo(lm[b].x * canvasEl.width, lm[b].y * canvasEl.height);
+          ctx.stroke();
+        });
+        ctx.fillStyle = "#ffffff";
+        lm.forEach((p) => {
+          ctx.beginPath();
+          ctx.arc(p.x * canvasEl.width, p.y * canvasEl.height, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+    }
+
+    // HUD tracking readouts — kept out of the hot path details.
+    let wasTracking = false;
+    function setTrackingReadout(handsCount) {
+      const st = document.getElementById("tracking-status");
+      const hc = document.getElementById("hands-count");
+      const gn = document.getElementById("gesture-name");
+      if (!st || !hc || !gn) return;
+      const tracking = handsCount > 0;
+      st.textContent = tracking ? t("trackActive") : t("trackLost");
+      st.classList.toggle("warn", !tracking);
+      hc.textContent = handsCount;
+      gn.textContent = t("gname_" + activeGesture);
+      if (tracking !== wasTracking) {
+        logEvent(tracking ? t("logTrackOn") : t("logTrackOff"));
+        wasTracking = tracking;
+      }
+    }
+
+    function initWebcamAndAI() {
+      const videoElement = document.getElementById("webcam");
+      const statusBox = document.getElementById("gesture-status");
+      const loadingText = document.getElementById("loading");
+      const overlayCanvas = document.getElementById("hand-overlay");
+      const overlayCtx = overlayCanvas.getContext("2d");
+      overlayCanvas.width = 200;
+      overlayCanvas.height = 150;
+
+      const removeLoading = () => {
+        if (loadingText && document.body.contains(loadingText)) {
+          loadingText.style.opacity = "0";
+          setTimeout(() => loadingText.remove(), 600);
+        }
+      };
+      // Fallback: never leave the boot screen stuck.
+      setTimeout(removeLoading, 9000);
+
+      if (!window.Hands || !window.Camera) {
+        document.getElementById("boot-sub").textContent = t("statusMpFail");
+        statusBox.textContent = t("statusMpFail");
+        setTimeout(removeLoading, 3000);
+        return;
+      }
+
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        // 0 = lite model: 2-3x faster inference than 1, and the main
+        // latency win. Accuracy loss is negligible at webcam distance.
+        modelComplexity: 0,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults((results) => {
+        removeLoading();
+
+        const landmarks = results.multiHandLandmarks || [];
+        drawHandOverlay(overlayCtx, overlayCanvas, landmarks);
+
+        sculptActive = false;
+        sculptCursor.visible = false;
+        pointerDot.visible = false;
+        pointerLine.visible = false;
+
+        if (landmarks.length === 0) {
+          statusBox.classList.remove("active");
+          statusBox.textContent = t("statusNoHand");
+          // Nothing is reset on purpose: scale, rotation and position
+          // all stay exactly where they were when the hand left.
+          handSmooth[0] = handSmooth[1] = null;
+          pinchSmooth[0] = pinchSmooth[1] = null;
+          pointSmooth[0] = pointSmooth[1] = null;
+          updateGesture("none", null);
+          setTrackingReadout(0);
+          return;
+        }
+
+        statusBox.classList.add("active");
+        const analyzed = landmarks.map((lm, idx) => analyzeHand(lm, idx));
+
+        // Classify what the camera sees this frame, then let the state
+        // machine debounce it and apply relative control.
+        let raw, ctx;
+        if (analyzed.length >= 2) {
+          raw = "two";
+          ctx = analyzed;
+        } else {
+          const h = analyzed[0];
+          raw = h.isPinching ? "sculpt"
+              : h.isPointing ? "point"
+              : h.isFist ? "move"
+              : "rotate";
+          ctx = h;
+        }
+
+        updateGesture(raw, ctx);
+        applyGesture(raw, ctx, statusBox);
+        setTrackingReadout(landmarks.length);
+      });
+
+      const cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+
+      cameraUtils.start()
+        .then(() => {
+          statusBox.textContent = t("statusCamReady");
+          removeLoading();
+        })
+        .catch((err) => {
+          console.error(err);
+          document.getElementById("boot-sub").textContent = t("statusCamFail");
+          statusBox.textContent = t("statusCamFail");
+          setTimeout(removeLoading, 4000);
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Animation loop — everything eases toward its target each frame
+    // ---------------------------------------------------------------
+    const _white = new THREE.Color(1, 1, 1);
+    let fpsFrames = 0;
+    let fpsLastStamp = 0;
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      if (!scene) return;
+
+      const sel = selectedObject();
+      if (sculptActive && sel) applySculpt(sel);
+
+      for (let i = 0; i < objects.length; i++) {
+        const o = objects[i];
+        // Hover feedback while pointing: the aimed object brightens.
+        o.material.color.copy(o.baseColor);
+        if (i === hoverIndex && activeGesture === "point") {
+          o.material.color.lerp(_white, hoverStrength);
+        }
+        o.update();
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+
+      // FPS gauge + target readout, refreshed twice a second.
+      fpsFrames++;
+      if (now - fpsLastStamp > 500) {
+        const fps = Math.round((fpsFrames * 1000) / (now - fpsLastStamp));
+        fpsFrames = 0;
+        fpsLastStamp = now;
+        const fv = document.getElementById("fps-value");
+        if (fv) fv.textContent = fps;
+        setGauge("fps-ring", fps / 72);
+        updateSystemReadout();
+      }
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ---------------------------------------------------------------
+    // Export the whole scene as an ASCII PLY file: every object's
+    // particles with their world transform applied, so what you
+    // assembled on screen is exactly what Blender/MeshLab imports.
+    // ---------------------------------------------------------------
+    function exportPLY() {
+      const total = objects.length * PARTICLES_PER_OBJECT;
+      const lines = [
+        "ply",
+        "format ascii 1.0",
+        "comment Exported from Point Cloud Studio",
+        `element vertex ${total}`,
+        "property float x",
+        "property float y",
+        "property float z",
+        "end_header"
+      ];
+      const v = new THREE.Vector3();
+      objects.forEach((o) => {
+        const pos = o.geometry.attributes.position.array;
+        for (let i = 0; i < PARTICLES_PER_OBJECT; i++) {
+          const i3 = i * 3;
+          v.set(pos[i3], pos[i3 + 1], pos[i3 + 2]).applyMatrix4(o.points.matrixWorld);
+          lines.push(`${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)}`);
+        }
+      });
+      const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "pointcloud-scene.ply";
+      a.click();
+      URL.revokeObjectURL(url);
+
+      document.getElementById("gesture-status").textContent = t("exported");
+      logEvent(t("logExport"));
+    }
+
+    // ---------------------------------------------------------------
+    // Keyboard controls — the fast lane for power use
+    // ---------------------------------------------------------------
+    function nudgeSlider(id, delta) {
+      const el = document.getElementById(id);
+      const v = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), parseFloat(el.value) + delta));
+      el.value = v;
+      el.dispatchEvent(new Event("input"));
+    }
+
+    function setSculptMode(mode) {
+      const el = document.getElementById("sculpt-mode");
+      el.value = mode;
+      logEvent(`${t("logMode")}: ${t("sculpt_" + mode)}`);
+    }
+
+    function setupKeyboard() {
+      document.addEventListener("keydown", (ev) => {
+        if (ev.target && /^(INPUT|SELECT|TEXTAREA)$/.test(ev.target.tagName)) return;
+        const k = ev.key.toLowerCase();
+
+        if (k >= "1" && k <= "6") {
+          const idx = parseInt(k, 10) - 1;
+          if (idx < objects.length) {
+            selectObject(idx);
+            logEvent(`${t("logSelect")}: ${t("objectLabel")} ${idx + 1}`);
+          }
+          return;
+        }
+
+        switch (k) {
+          case "n": document.getElementById("btn-add").click(); break;
+          case "c": document.getElementById("btn-duplicate").click(); break;
+          case "delete":
+          case "backspace": document.getElementById("btn-delete").click(); break;
+          case "r": document.getElementById("btn-reset").click(); break;
+          case "p": exportPLY(); break;
+          case "q": setSculptMode("pull"); break;
+          case "w": setSculptMode("push"); break;
+          case "e": setSculptMode("smooth"); break;
+          case "[": nudgeSlider("sculpt-radius", -1); break;
+          case "]": nudgeSlider("sculpt-radius", 1); break;
+          case "-": nudgeSlider("sculpt-strength", -0.1); break;
+          case "=": nudgeSlider("sculpt-strength", 0.1); break;
+          case "g":
+            if (floorGrid) {
+              floorGrid.visible = !floorGrid.visible;
+              logEvent(floorGrid.visible ? t("logGridOn") : t("logGridOff"));
+            }
+            break;
+          case "h":
+            document.querySelectorAll(".hud-hidable").forEach((el) => el.classList.toggle("hidden"));
+            logEvent(t("logHud"));
+            break;
+          case "f": document.getElementById("btn-fullscreen").click(); break;
+          case "l": document.getElementById("btn-lang").click(); break;
+          case "k":
+          case "?": document.getElementById("keys-overlay").classList.toggle("hidden"); break;
+          case "escape": document.getElementById("keys-overlay").classList.add("hidden"); break;
+        }
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // UI wiring
+    // ---------------------------------------------------------------
+    function setupUI() {
+      const modelSelect = document.getElementById("model-select");
+      const colorInput = document.getElementById("particle-color");
+      const colorHex = document.getElementById("color-hex");
+      const statusBox = document.getElementById("gesture-status");
+
+      modelSelect.addEventListener("change", (e) => {
+        const o = selectedObject();
+        if (o) {
+          o.setShape(e.target.value);
+          logEvent(`${t("logShape")}: ${t("shape_" + e.target.value)}`);
+        }
+        updateObjectInfo();
+        updateSystemReadout();
+      });
+
+      colorInput.addEventListener("input", (e) => {
+        const color = e.target.value;
+        colorHex.textContent = color;
+        document.documentElement.style.setProperty("--accent-color", color);
+        const o = selectedObject();
+        if (o) o.baseColor.set(color);
+      });
+
+      document.getElementById("sculpt-strength").addEventListener("input", (e) => {
+        document.getElementById("strength-value").textContent = parseFloat(e.target.value).toFixed(1);
+      });
+
+      document.getElementById("sculpt-radius").addEventListener("input", (e) => {
+        document.getElementById("radius-value").textContent = e.target.value;
+      });
+
+      document.getElementById("btn-add").addEventListener("click", () => {
+        const o = addObject(modelSelect.value, colorInput.value);
+        if (o) logEvent(`${t("logAdd")}: ${t("shape_" + o.shape)}`);
+        else statusBox.textContent = t("maxObjects");
+      });
+
+      document.getElementById("btn-duplicate").addEventListener("click", () => {
+        const o = duplicateSelected();
+        if (o) logEvent(t("logDup"));
+        else statusBox.textContent = t("maxObjects");
+      });
+
+      document.getElementById("btn-delete").addEventListener("click", () => {
+        if (deleteSelected()) logEvent(t("logDelete"));
+        else statusBox.textContent = t("cantDeleteLast");
+      });
+
+      document.getElementById("btn-reset").addEventListener("click", () => {
+        const o = selectedObject();
+        if (!o) return;
+        o.deform.fill(0);
+        o.targetRotX = 0;
+        o.targetRotY = 0;
+        o.targetRotZ = 0;
+        o.targetScale = 1.0;
+        logEvent(t("logReset"));
+      });
+
+      document.getElementById("btn-export").addEventListener("click", exportPLY);
+
+      document.getElementById("btn-keys").addEventListener("click", () => {
+        document.getElementById("keys-overlay").classList.toggle("hidden");
+      });
+      document.getElementById("keys-overlay").addEventListener("click", (e) => {
+        e.currentTarget.classList.add("hidden");
+      });
+
+      document.getElementById("btn-lang").addEventListener("click", () => {
+        currentLang = currentLang === "en" ? "es" : "en";
+        applyLanguage();
+      });
+
+      document.getElementById("btn-fullscreen").addEventListener("click", () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen();
+        } else {
+          document.exitFullscreen();
+        }
+      });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      initThree();
+      applyLanguage();
+      document.getElementById("gesture-status").textContent = t("statusWaiting");
+      setupUI();
+      setupKeyboard();
+      startClock();
+      animate(performance.now());
+      initWebcamAndAI();
+      logEvent(t("logOnline"));
+    });
+  </script>
+</body>
+</html>
