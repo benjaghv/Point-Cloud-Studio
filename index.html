@@ -1486,7 +1486,7 @@
       const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / palmSize;
       if (pinchState[handIndex]) {
         if (pinchDist > 0.55 || extendedMRP === 0) pinchState[handIndex] = false;
-      } else if (pinchDist < 0.40 && extendedMRP >= 2) {
+      } else if (pinchDist < 0.40 && extendedMRP >= 1) {
         pinchState[handIndex] = true;
       }
       const isPinching = pinchState[handIndex];
